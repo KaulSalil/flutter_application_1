@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:table_calendar/table_calendar.dart';
+import 'package:intl/intl.dart';
 
 void main() {
   runApp(MyApp());
@@ -10,107 +10,100 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: CalendarScreen(),
+      title: 'Flutter Scheduling App',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ),
+      home: ScheduleScreen(),
     );
   }
 }
 
-class CalendarScreen extends StatefulWidget {
+class ScheduleScreen extends StatefulWidget {
   @override
-  _CalendarScreenState createState() => _CalendarScreenState();
+  _ScheduleScreenState createState() => _ScheduleScreenState();
 }
 
-class _CalendarScreenState extends State<CalendarScreen> {
-  late SharedPreferences _prefs;
-  late CalendarController _calendarController;
-  List<DateTime> _events = [];
+class _ScheduleScreenState extends State<ScheduleScreen> {
+  DateTime selectedDate = DateTime.now();
+  TimeOfDay selectedTime = TimeOfDay.now();
 
-  @override
-  void initState() {
-    super.initState();
-    _initializeCalendar();
-  }
-
-  Future<void> _initializeCalendar() async {
-    _prefs = await SharedPreferences.getInstance();
-    _calendarController = CalendarController();
-    _loadSavedEvents();
-  }
-
-  void _loadSavedEvents() {
-    final List<String>? savedEvents = _prefs.getStringList('events');
-    if (savedEvents != null) {
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: selectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2025),
+    );
+    if (picked != null && picked != selectedDate)
       setState(() {
-        _events = savedEvents.map((e) => DateTime.parse(e)).toList();
+        selectedDate = picked;
+      });
+  }
+
+  Future<void> _selectTime(BuildContext context) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: selectedTime,
+    );
+    if (picked != null && picked != selectedTime)
+      setState(() {
+        selectedTime = picked;
+      });
+  }
+
+  Future<void> _saveSchedule() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('scheduled_date', DateFormat('yyyy-MM-dd').format(selectedDate));
+    await prefs.setString('scheduled_time', selectedTime.format(context));
+  }
+
+  Future<void> _loadSchedule() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedDate = prefs.getString('scheduled_date') ?? '';
+    final savedTime = prefs.getString('scheduled_time') ?? '';
+    if (savedDate.isNotEmpty && savedTime.isNotEmpty) {
+      setState(() {
+        selectedDate = DateFormat('yyyy-MM-dd').parse(savedDate);
+        final timeParts = savedTime.split(':');
+        selectedTime = TimeOfDay(hour: int.parse(timeParts[0]), minute: int.parse(timeParts[1]));
       });
     }
   }
 
-  void _saveEvent(DateTime selectedDate) {
-    setState(() {
-      _events.add(selectedDate);
-    });
-
-    _prefs.setStringList(
-      'events',
-      _events.map((e) => e.toIso8601String()).toList(),
-    );
-  }
-
-  void _removeEvent(DateTime selectedDate) {
-    setState(() {
-      _events.remove(selectedDate);
-    });
-
-    _prefs.setStringList(
-      'events',
-      _events.map((e) => e.toIso8601String()).toList(),
-    );
+  @override
+  void initState() {
+    super.initState();
+    _loadSchedule();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Scheduling App'),
+        title: Text('Flutter Scheduling App'),
       ),
-      body: Column(
-        children: <Widget>[
-          TableCalendar(
-            calendarController: _calendarController,
-            events: {for (var event in _events) event: []},
-            onDaySelected: (date, events, holidays) {
-              if (events.isNotEmpty) {
-                // Remove the event if it already exists
-                _removeEvent(date);
-              } else {
-                // Add the event if it doesn't exist
-                _saveEvent(date);
-              }
-              setState(() {
-                _calendarController.setSelectedDay(date);
-              });
-            },
-          ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: _events.length,
-              itemBuilder: (context, index) {
-                final eventDate = _events[index];
-                return ListTile(
-                  title: Text('Scheduled on ${eventDate.toLocal()}'),
-                );
-              },
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ListTile(
+              title: Text('Date: ${DateFormat('yyyy-MM-dd').format(selectedDate)}'),
+              trailing: Icon(Icons.keyboard_arrow_down),
+              onTap: () => _selectDate(context),
             ),
-          ),
-        ],
+            ListTile(
+              title: Text('Time: ${selectedTime.format(context)}'),
+              trailing: Icon(Icons.keyboard_arrow_down),
+              onTap: () => _selectTime(context),
+            ),
+            ElevatedButton(
+              onPressed: _saveSchedule,
+              child: Text('Save Schedule'),
+            ),
+          ],
+        ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _calendarController.dispose();
-    super.dispose();
   }
 }
